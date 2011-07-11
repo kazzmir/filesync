@@ -1,0 +1,6 @@
+Filesync helps you sync files between two hosts. It does this be keeping a list of files you care about along with an md5sum for each file. Filesync will only send files whose md5sum's differ from what it already knows about.
+
+ $ filesync -s # start a new filesync repository, it will ask you some questions
+ $ filesync -a somefile # add a file
+ $ filesync -ll # view files that will be synced
+ $ filesync -c # sync the file
