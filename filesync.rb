@@ -22,6 +22,7 @@ require 'net/ftp'
 require 'timeout'
 require 'net/sftp'
 require 'termios'
+require 'tempfile'
 
 class PROTOCOLS
 	private_class_method :new
@@ -209,7 +210,7 @@ class HelpAction < Action
 		puts "-a : Add some files to the filesync repository";
 		puts  "-f : Force all files to become up-to-date without syncing with remote repository"
 		puts "-r : Remove some files from the filesync repository";
-		puts "-c : Sync the filesync repository with the server using some method( filesync will figure it out, dont worry )";
+		puts "-c : Sync the filesync repository with the server using some method (filesync will figure it out, dont worry)";
 		puts "-cc: Force a sync of all files";
 		# puts "-e : Remove files on the other server side if they arent in the filesync repository";
 		puts "-v : Be verbose because you are paranoid and dont trust my programming";
@@ -526,37 +527,79 @@ class Sync < Action
 		return true
 	end
 
-	def syncSSH( files, sync, verbose )
-		puts "Password for #{sync.user}@sftp://#{sync.server}"
-		# pass = $stdin.gets.chomp!
-		pass = getPassword
-		begin
-			Net::SFTP.start(sync.server, sync.user, {:password => pass}){|sftp|
-			# Net::SFTP.start(sync.server, sync.user){|sftp|
-				files.each{ |x| 
-					name = x[0]
-					# puts sftp.pwd
-					if /^(.*)\// === name
-						dirname = sync.home + "/" + $1
-						puts "Making #{dirname}" if verbose
-						begin
-							sftp.mkdir!( dirname, :permissions => 0775 )
-						rescue Net::SFTP::Exception
-						end
-					end
-					fname = sync.home + "/" + name
-					puts "Transferring #{name} to #{fname}"
-					sftp.upload!( name, fname )
-					sftp.setstat!( fname, :permissions => 0664 )
+    def command_ok(what)
+        save_stderr = $stderr.dup
+        error = IO.pipe
+        $stderr.reopen error[1]
+        pipe = IO.popen what # <- not a real command
+        $stderr.reopen IO.new(2)
+        error[1].close
 
-					sleep @sleep
-				}
-			}
-		rescue Net::SFTP::Exception
-			$stderr.puts "SFTP error: " + $!
-			return false
-		end
-		return true
+        ok = false
+        if !select([error[0]], nil, nil, 0.1) then
+            # The command was found. Use `pipe' here.
+            # puts 'found'
+            ok = true
+        else
+            # The command could not be found.
+            # puts 'not found'
+        end 
+        $stderr.reopen IO.new(save_stderr.fileno)
+        ok
+    end
+
+    def haveRsync
+        ok = command_ok('rsync --version')
+        ok
+    end
+
+    def syncRsync(files, sync, verbose)
+        puts "Using rsync"
+        file = Tempfile.new("filesync")
+        files.each{|name| file.puts(name[0]) }
+        file.flush
+        command = "rsync -avP --files-from=#{file.path} . #{sync.user}@#{sync.server}:#{sync.home}"
+        # puts command
+        Kernel.system(command)
+        file.close
+        true
+    end
+
+	def syncSSH( files, sync, verbose )
+        if haveRsync then
+            syncRsync(files, sync, verbose)
+        else
+            puts "Password for #{sync.user}@sftp://#{sync.server}"
+            # pass = $stdin.gets.chomp!
+            pass = getPassword
+            begin
+                Net::SFTP.start(sync.server, sync.user, {:password => pass}){|sftp|
+                # Net::SFTP.start(sync.server, sync.user){|sftp|
+                    files.each{ |x| 
+                        name = x[0]
+                        # puts sftp.pwd
+                        if /^(.*)\// === name
+                            dirname = sync.home + "/" + $1
+                            puts "Making #{dirname}" if verbose
+                            begin
+                                sftp.mkdir!( dirname, :permissions => 0775 )
+                            rescue Net::SFTP::Exception
+                            end
+                        end
+                        fname = sync.home + "/" + name
+                        puts "Transferring #{name} to #{fname}"
+                        sftp.upload!( name, fname )
+                        sftp.setstat!( fname, :permissions => 0664 )
+
+                        sleep @sleep
+                    }
+                }
+            rescue Net::SFTP::Exception
+                $stderr.puts "SFTP error: " + $!
+                return false
+            end
+            return true
+        end
 	end
 
 	def writeFiles( files, sync, verbose )
