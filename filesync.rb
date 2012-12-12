@@ -3,6 +3,7 @@
 ## Filesync in ruby!
 ## 8/13/2005
 ## Jon Rafkind
+## https://github.com/kazzmir/filesync
 
 ## Needs nmap to run
 
