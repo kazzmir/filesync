@@ -4,3 +4,9 @@ Filesync helps you sync files between two hosts. It does this be keeping a list 
  $ filesync -a somefile # add a file
  $ filesync -ll # view files that will be synced
  $ filesync -c # sync the file
+
+Setup:
+
+ $ gem install net-sftp
+ $ sudo apt-get install ruby1.9.1-dev # use whatever -dev version for your ruby
+ $ gem install ruby-termios
